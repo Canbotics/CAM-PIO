@@ -1,6 +1,6 @@
 import env, boto3, io, hashlib, mysql.connector
-from PIL import Image
-
+from PIL import Image, JpegImagePlugin
+JpegImagePlugin._getmp = lambda x: None
 
 print("Initializing Remote Connections")
 awssession = boto3.Session(aws_access_key_id=env.AWSUSR.split("|")[1],aws_secret_access_key=env.AWSUSR.split("|")[2])
@@ -9,127 +9,108 @@ sqlcursor = datasource.cursor()
 
 print('\tSUCCESS: Connections Opened\n')
 
-def catalogue (a_domain = "smithy",a_origin = "/test/test.jpg",a_tags = ["test","something","dark side"]):
-	s3 = awssession.resource('s3')
-	uriPath = {
-		'o_bucket':env.AWSS3['upload'].split("|")[0],
-		'o_file':env.AWSS3['upload'].split("|")[1] + a_origin,
-		'd_bucket':env.AWSS3['archive'].split("|")[0],
-		'd_file':env.AWSS3['archive'].split("|")[1] + '/' + a_domain + '/'}
-		
-	
-	bucket = s3.Bucket(uriPath['o_bucket'])
+def catNewImage (a_domain = "smithy",a_origin = "/smithy/corset-form-fitting-and-shaping-top-badge.jpg",a_tags = ["test"]):
+	uriPath = {'o_bucket':env.AWSS3['upload'].split("|")[0],'o_file':env.AWSS3['upload'].split("|")[1] + a_origin,'d_bucket':env.AWSS3['archive'].split("|")[0],'d_file':env.AWSS3['archive'].split("|")[1] + '/' + a_domain + '/'}
+	s3r, s3c = awssession.resource('s3'), awssession.client('s3')
+	bucket = s3r.Bucket(uriPath['o_bucket'])
 	object = bucket.Object(uriPath['o_file'])
+	objectDown, objectUp = io.BytesIO(), io.BytesIO()
 
-	objectBytes = io.BytesIO()
+	print('Retrieving {0}/{1}...'.format(uriPath['o_bucket'],uriPath['o_file']))
+
+	object.download_fileobj(objectDown)
+	print('\tSUCCESS: Image Retrieved\n')
+	print('Loading Image {0}...'.format(uriPath['o_file'].rpartition('/')[2]))
 	
-	print('Retrieving: ' + uriPath['o_bucket'] + ' | ' + uriPath['o_file'])
-	'''
-	object.download_fileobj(objectBytes)
-	'''
-	img = Image.open("test.jpg")
-	print('\tSUCCESS: Retrieved\n')
-	
-	print('Analyzing Image: ' + uriPath['o_file'])
-	
-	'''
-	img = Image.open(objectBytes)
-	'''
+	img = Image.open(objectDown)
 	img_md5 = hashlib.md5(img.tobytes()).hexdigest().upper()
-	img_ext = ('JPG' if img.format == 'JPEG' else img.format).lower()
-	img_dim = str(img.size[0]) + ' x ' + str(img.size[1])
-	img_size = object.content_length
-	
-	print('\tMD5: {0}\n\tExtension: {1}\n\tDimensions: {2}\n\tFilesize: {3}\n\tSUCCESS: Analyzed\n'.format(img_md5,img_ext,img_dim,img_size))
+	print('\tSUCCESS: Image Loaded\n')
+	print("Checking for Duplicate...")
 	
 	q_duplicate = "SELECT COUNT(img_id) AS img_count FROM lib_img WHERE img_md5 = '{0}'".format(img_md5)
-	
 	sqlcursor.execute(q_duplicate,())
-	
-	for (img_count) in sqlcursor:
-		print(img_count)
-	
-	
-	
-	
-	
-	"""
-	
-	s3.Object(uriPath['d_bucket'], uriPath['d_file'] + img_md5).copy_from(CopySource = uriPath['o_bucket'] + '/' + uriPath['o_file'])
-	"""
-	
-	
 
-def sc_fileFormat (a_ext):
-	fileFormats = {
-		'jpg':'jpg',
-		'jpeg':'jpg',
-		'png':'png',
-		'gif':'gif'
-		}
-	return fileFormats.get(a_ext,'extension not supported')
-
-	
-	
-	
-	
-	"""
-	
-	try:
-		.download_file(lv_origin,lv_temp)
-	except botocore.exceptions.ClientError as e:
-		if e.response['Error']['Code'] == "404":
-			print("404")
-		else:
-			raise
-			
-			
-	with open(lv_temp.name) as temp:
-		print(temp)
-	
-		with open(lv_temp.name,"wb") as temp:
-	print(lv_temp)
-	
-			
+	if (sqlcursor.fetchone()[0]):
+		print("\tERROR: Duplicate Image Detected\n")
+	else:
+		print("\tSUCCESS: Image is Unique.\n")
+		print("Inserting New Record...")
 		
-			try:
-				s3.Bucket(env.AWSS3['upload'].split("|")[0]).download_file(lv_origin,lv_tmp)
-			except botocore.exceptions.ClientError as e:
-				if e.response['Error']['Code'] == "404":
-					print("404")
-				else:
-					raise
-	"""
+		img_ext = ('JPG' if img.format == 'JPEG' else img.format).lower()
+		img_dim = str(img.width) + ' x ' + str(img.height)
+		img_size = object.content_length
+		print("\timg_md5 = {0}\n\timg_ext = {1}\n\timg_width = {2}\n\timg_height = {3}\n\timg_size = {4}\n\timg_domain = {5}".format(img_md5,img_ext,img.size[0],img.size[1],img_size,a_domain))
 
+		q_insimg = "INSERT INTO lib_img (img_md5,img_ext,img_width,img_height,img_size,img_domain) VALUES ('{0}','{1}',{2},{3},{4},'{5}')".format(img_md5,img_ext,img.width,img.height,img_size,a_domain)
+		sqlcursor.execute(q_insimg,())
+		datasource.commit()
+		img_id = sqlcursor.lastrowid
+		
+		print("\tSUCCESS: Image inserted as #{0}\n".format(img_id))
+		print("Generating Thumbnail...")
 
+		thumb = modResize (img,150,150)
+		print("\tsaving : {0}/{1}{2}.thumb.{3}".format(uriPath['d_bucket'],uriPath['d_file'],img_md5,img_ext))
 
-def testingtwo ():
-	s3 = awssession.client('s3')
-	s3 = awssession.resource('s3')
+		thumb.save(objectUp, format=img.format)
+		objectUp.seek(0)
+		
+		s3c.upload_fileobj(objectUp,uriPath['d_bucket'],uriPath['d_file'] + "{0}.thumb.{1}".format(img_md5,img_ext))
+
+		print("\tSUCCESS: Thumbnail Saved\n")
+		print("Moving Original File...")
+		print("\tcopying {0}/{1}".format(uriPath['o_bucket'],uriPath['o_file']))
+
+		s3r.Object(uriPath['d_bucket'],"{0}{1}.{2}".format(uriPath['d_file'],img_md5,img_ext)).copy_from(CopySource="{0}/{1}".format(uriPath['o_bucket'],uriPath['o_file']))
+		print("\tdeleting {0}/{1}".format(uriPath['o_bucket'],uriPath['o_file']))
+
+		s3r.Object(uriPath['o_bucket'],uriPath['o_file']).delete()
+		print("\tSUCCESS: Image Moved\n")
+
 	
+def modResize (a_img,a_imgx,a_imgy):
+	img, imgx, imgy = a_img.copy(), a_img.width, a_img.height
 	
-	for bucket in s3.buckets.all():
-		print(bucket.name)
+	if (a_imgx <= imgx and a_imgy <= imgy):
+		if (imgx - a_imgx > imgy - a_imgy):
+			img = img.resize([int(imgx * a_imgy / imgy) ,a_imgy],Image.LANCZOS)
+			imgx = (img.width - a_imgx) / 2
+			imgy = 0
+		else:
+			img = img.resize([a_imgx ,int(imgy * a_imgx / imgx)],Image.LANCZOS)
+			imgx = 0
+			imgy = (img.height - a_imgy) / 2
+			
+		img = img.crop([imgx,imgy,imgx + a_imgx,imgy + a_imgy])
+	else:
+		if (a_img.format == 'PNG'):
+			canvas = Image.new(a_img.mode,[a_imgx,a_imgy])
+		else:
+			canvas = Image.new(a_img.mode,[a_imgx,a_imgy],(255,255,255))
+
+		canvas.paste(img,[int((a_imgx - imgx) / 2),int((a_imgy - imgy) / 2)])
+		img = canvas
+
+	return(img)
 
 
- 
+
+	
+
+catNewImage()
 
 
 
-catalogue()
 
-
-
-
-print("Closing Database")
+print("Closing Connections")
 sqlcursor.close()
 datasource.close()
-print('\tSUCCESS: Closed\n')
+print('\tSUCCESS: Connections Closed\n')
 
 
 
 
-print(" ===== ")
+print(" =END= \n ===== ")
 
 
 
