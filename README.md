@@ -1,5 +1,7 @@
 # CAM-PIO
-# Canbotics Asset Manager: Python Image Organizer
+Canbotics Asset Manager: Python Image Organizer
+
+## Goals
 Python based app, which catalogues uploaded images:
 
 1) Retrieve images from an S3 bucket
