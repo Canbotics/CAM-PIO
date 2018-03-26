@@ -1,6 +1,10 @@
 # CAM-PIO
 Canbotics Asset Manager: Python Image Organizer
 
+> **NOTE**
+> Do **NOT** expose this to the public; this interface has no authentication or sanitization.
+> Exposing publicly will create a gaping security hole.
+
 ## Features
 Python based app, which catalogues uploaded images:
 

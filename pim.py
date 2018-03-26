@@ -1,16 +1,15 @@
-import env, boto3, io, hashlib, mysql.connector
+import sys, getopt, env, boto3, io, hashlib, mysql.connector
 from PIL import Image, JpegImagePlugin
 JpegImagePlugin._getmp = lambda x: None
 
-print("Initializing Remote Connections")
-awssession = boto3.Session(aws_access_key_id=env.AWSUSR.split("|")[1],aws_secret_access_key=env.AWSUSR.split("|")[2])
-datasource = mysql.connector.connect(host=env.DBCAM.split('|')[0],user=env.DBCAM.split('|')[1],password=env.DBCAM.split('|')[2],database=env.DBCAM.split('|')[3])
-sqlcursor = datasource.cursor()
-
-print('\tSUCCESS: Connections Opened\n')
-
-def catNewImage (a_domain = "smithy",a_origin = "/smithy/corset-form-fitting-and-shaping-top-badge.jpg",a_tags = ["test"]):
-	uriPath = {'o_bucket':env.AWSS3['upload'].split("|")[0],'o_file':env.AWSS3['upload'].split("|")[1] + a_origin,'d_bucket':env.AWSS3['archive'].split("|")[0],'d_file':env.AWSS3['archive'].split("|")[1] + '/' + a_domain + '/'}
+def catNewImage (a_domain,a_origin,a_tags):
+	uriPath = {
+	'o_bucket':env.AWSS3['upload'].split("|")[0],
+	
+	'o_file':"{0}/{1}/{2}".format(env.AWSS3['upload'].split("|")[1],a_domain,a_origin),
+	'd_bucket':env.AWSS3['archive'].split("|")[0],
+	'd_file':env.AWSS3['archive'].split("|")[1] + '/' + a_domain + '/'}
+	
 	s3r, s3c = awssession.resource('s3'), awssession.client('s3')
 	bucket = s3r.Bucket(uriPath['o_bucket'])
 	object = bucket.Object(uriPath['o_file'])
@@ -27,7 +26,7 @@ def catNewImage (a_domain = "smithy",a_origin = "/smithy/corset-form-fitting-and
 	print('\tSUCCESS: Image Loaded\n')
 	print("Checking for Duplicate...")
 	
-	q_duplicate = "SELECT COUNT(img_id) AS img_count FROM lib_img WHERE img_md5 = '{0}'".format(img_md5)
+	q_duplicate = "SELECT COUNT(img_id) FROM lib_img WHERE img_md5 = '{0}'".format(img_md5)
 	sqlcursor.execute(q_duplicate,())
 
 	if (sqlcursor.fetchone()[0]):
@@ -66,6 +65,9 @@ def catNewImage (a_domain = "smithy",a_origin = "/smithy/corset-form-fitting-and
 
 		s3r.Object(uriPath['o_bucket'],uriPath['o_file']).delete()
 		print("\tSUCCESS: Image Moved\n")
+		print("Beginning Tagging...")
+		
+		catTagImage(img_id,a_tags)
 
 	
 def modResize (a_img,a_imgx,a_imgy):
@@ -94,26 +96,97 @@ def modResize (a_img,a_imgx,a_imgy):
 	return(img)
 
 
+def catTagImage (a_id,a_tags=["product_gladius","subcat_sword","section_design","category_melee","segment_weapon"]):
+	print("\tTags: {0}".format(a_tags))
+	
+	for tag in a_tags:
+		print("\tTag: {0}".format(tag))
+		
+		q_duplicate = "SELECT tag_id FROM lib_tag WHERE tag_name = '{0}' AND tag_class = '{1}'".format(tag.split('_')[1],tag.split('_')[0])
+		sqlcursor.execute(q_duplicate,())
+		rs_tagid = sqlcursor.fetchone()
+		
+		if (rs_tagid):
+			tag_id = rs_tagid[0]
+			print("\t\ttag id #{0}".format(tag_id))
+		else:
+			print("\t\tadding tag...")
+			
+			q_instag = "INSERT INTO lib_tag (tag_name,tag_class) VALUES ('{0}','{1}')".format(tag.split('_')[1],tag.split('_')[0])
+			sqlcursor.execute(q_instag,())
+			datasource.commit()
+			tag_id = sqlcursor.lastrowid
+			print("\t\t\ttag id #{0}".format(tag_id))
+		
+		q_duplicate = "SELECT COUNT(xref_id) FROM xref_img_tag WHERE img_id = '{0}' AND tag_id = '{1}'".format(a_id,tag_id)
+		sqlcursor.execute(q_duplicate,())
+		rs_xref = sqlcursor.fetchone()[0]
+		
+		if (not rs_xref):
+			print("\t\ttagging image.")
+			q_insxref = "INSERT INTO xref_img_tag (img_id, tag_id) VALUES ({0},{1})".format(a_id,tag_id)
+			sqlcursor.execute(q_insxref,())
+			datasource.commit()
+			print("\t\tSUCCESS: Tag Added")
+		else:
+			print("\t\tERROR: Image Already Tagged.")
+
+
+
+
+'''
+	
+catTagImage(1)
+'''
+
+def appRun (a_args):
+	origin, act, tag, domain = '/','','','smithy'
+	
+	try:
+		opts, args = getopt.getopt(a_args,"d:o:a:t:")
+	except getopt.GetoptError:
+		print ("CHEESE")
+		sys.exit(2)
+		
+	for opt, arg in opts:
+		if (opt == '-o'):
+			origin = arg
+		elif (opt == '-d'):
+			domain = arg
+		elif (opt == '-a'):
+			act = arg
+		elif (opt == '-t'):
+			tag = arg.split(',')
+	
+	if (act == 'cat'):
+		catNewImage(domain,origin,tag)
+		
 
 	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
 
-catNewImage()
+''' EXECUTING APPLICATION '''
+print("Initializing Remote Connections")
+awssession = boto3.Session(aws_access_key_id=env.AWSUSR.split("|")[1],aws_secret_access_key=env.AWSUSR.split("|")[2])
+datasource = mysql.connector.connect(host=env.DBCAM.split('|')[0],user=env.DBCAM.split('|')[1],password=env.DBCAM.split('|')[2],database=env.DBCAM.split('|')[3])
+sqlcursor = datasource.cursor()
+print('\tSUCCESS: Connections Opened\n')
 
-
-
+appRun(sys.argv[1:])
 
 print("Closing Connections")
 sqlcursor.close()
 datasource.close()
 print('\tSUCCESS: Connections Closed\n')
-
-
-
-
 print(" =END= \n ===== ")
-
-
-
-
-
-
