@@ -1,29 +1,15 @@
-import env, boto3
 
-print("Initializing Remote Connections")
 
-awssession = boto3.Session(aws_access_key_id=env.AWSUSR.split("|")[1],aws_secret_access_key=env.AWSUSR.split("|")[2])
-print('\tSUCCESS: Connections Opened\n')
-
-def batListFiles (a_domain = "smithy",a_origin = "/smithy",a_tags = ["test"]):
-	uriPath = {'o_bucket':env.AWSS3['upload'].split("|")[0],'o_file':env.AWSS3['upload'].split("|")[1] + a_origin}
-	s3r, s3c = awssession.resource('s3'), awssession.client('s3')
-	bucket = s3r.Bucket(uriPath['o_bucket'] + "{0}".format(a_origin))
+def batListFiles (a_domain,a_batch):
+	print("Loading Batch File ({0})".format(a_batch))
 	
-	print(uriPath)
+	batchList  = open(a_batch,'r')
+	print('\tSUCCESS: File Opened\n')
 	
-	print(bucket)
-	print(" +++ ")
-
-
-	for object in bucket.objects.all():
-		print(object)
-
-
-
-
-
-batListFiles()
+	for img in batchList:
+		tags = img.split(';')[1].split('.')[0]
+		origin = img.split('\n')[0]
+		print("python pim.py -d {0} -a cat -o {1} -t {2}".format(a_domain,origin,tags))
 
 
 
@@ -32,7 +18,4 @@ batListFiles()
 
 
 
-
-
-
-
+batListFiles('smithy','batch.txt')

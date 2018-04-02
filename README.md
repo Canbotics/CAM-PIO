@@ -1,9 +1,30 @@
-# CAM-PIO
+# CAM: PIO
 Canbotics Asset Manager: Python Image Organizer
 
-> **NOTE**
+> **NOTE:**
 > Do **NOT** expose this to the public; this interface has no authentication or sanitization.
 > Exposing publicly will create a gaping security hole.
+
+## CLI Flags
+- -a [act]
+  - cat (catalogue) : Catalogue the origin file(s) in the datastore, and AWS S3 bucket defined in **env.py**
+- -o [origin]
+  - origin : String representing the URI (local) or key (s3) to the file.
+- -d [domain]
+  - domain : String representing the domain owning the image *re.[a-z]*.
+- -s [source]
+  - local : origin file is on local filesystem.
+  - s3 : origin file is in the AWS S3 bucket, defined in **env.py**.
+- -t [tags]
+  - tags : Comma delimited string of tags to apply to images. type_tag-name *re.[a-z]*.
+
+
+
+
+
+
+
+
 
 ## Features
 Python based app, which catalogues uploaded images:
